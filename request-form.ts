@@ -30,7 +30,6 @@ export const postRequestForm = async (values: RequestFormValues, user: Person, a
   const message_report = serializeMessage(values, user, template_content_report, true, application);
   const template_content_confirm = serializeTemplateContent(values, user, false, application);
   const message_confirm = serializeMessage(values, user, template_content_confirm, false, application);
-
   return postEmail(message_report, message_confirm);
 };
 
@@ -40,46 +39,36 @@ const serializeTemplateContent = (
   isReport: boolean,
   application?: ConfigurationPayload,
 ) => {
-  if (isReport) {
-    if (application) {
-      const template_content = [
-        { name: 'first_name', content: user.first_name },
-        { name: 'last_name', content: user.last_name },
-        { name: 'role', content: values.role },
-        { name: 'email', content: values.email },
-        { name: 'institution_name', content: values.institution },
-        { name: 'institution_zipcode', content: values.postcode },
-        { name: 'institution_city', content: values.city },
-        { name: 'app_name', content: values.application_name },
-        { name: 'licence_requested', content: values.licences },
-        { name: 'app_platform', content: values.platform },
-        { name: 'comment', content: values.question },
-      ];
-      return template_content;
-    } else {
-      const template_content = [
-        { name: 'first_name', content: user.first_name },
-        { name: 'last_name', content: user.last_name },
-        { name: 'role', content: values.role },
-        { name: 'email', content: values.email },
-        { name: 'institution_name', content: values.institution },
-        { name: 'institution_zipcode', content: values.postcode },
-        { name: 'institution_city', content: values.city },
-        { name: 'app_name', content: values.application_name },
-        { name: 'licence_requested', content: values.licences },
-        { name: 'app_platform', content: values.platform },
-        { name: 'comment', content: values.question },
-      ];
-      return template_content;
-    }
-  } else {
+  if (!isReport) {
     const template_content = [
       { name: 'app_name', content: values.application_name },
-      { name: 'app_editor', content: values.editor_name },
       { name: 'app_platform', content: values.platform },
     ];
+    if (application) {
+      template_content.push({ name: 'licenses_amount', content: values.licences });
+    } else {
+      template_content.push({ name: 'app_editor', content: values.editor_name });
+    }
     return template_content;
   }
+  const template_content = [
+    { name: 'first_name', content: user.first_name },
+    { name: 'last_name', content: user.last_name },
+    { name: 'role', content: values.role },
+    { name: 'email', content: values.email },
+    { name: 'institution_name', content: values.institution },
+    { name: 'institution_zipcode', content: values.postcode },
+    { name: 'institution_city', content: values.city },
+    { name: 'app_name', content: values.application_name },
+    { name: 'app_platform', content: values.platform },
+    { name: 'comment', content: values.question },
+  ];
+  if (application) {
+    template_content.push({ name: 'licences_requested', content: values.licences });
+  } else {
+    template_content.push({ name: 'app_editor', content: values.editor_name });
+  }
+  return template_content;
 };
 
 const serializeMessage = (
@@ -113,71 +102,48 @@ const serializeMessage = (
     }`,
   };
 
+  let message = {
+    key: MAILCHIMP_API_KEY,
+    template_name: `${isReport ? EMAIL_TEMPLATE.NEW_APP_REPORT : EMAIL_TEMPLATE.NEW_APP_CONFIRM}`,
+    template_content,
+    message: {
+      from_email: EMAIL_ADDRESS.NOREPLY,
+      subject: `${isReport ? EMAIL_SUBJECT.NEW_APP_REPORT : EMAIL_SUBJECT.NEW_APP_CONFIRM}`,
+      to: [
+        {
+          email: `${isReport ? EMAIL_ADDRESS.PARTNER : EMAIL_ADDRESS.PROF}`,
+          type: 'to',
+        },
+      ],
+      merge_language: 'handlebars',
+      global_merge_vars: template_content,
+    },
+  };
   if (application) {
-    const message = {
-      key: MAILCHIMP_API_KEY,
-      template_name: `${isReport ? EMAIL_TEMPLATE.PAID_APP_REPORT : EMAIL_TEMPLATE.PAID_APP_CONFIRM}`,
-      template_content,
-      message: {
-        from_email: EMAIL_ADDRESS.NOREPLY,
-        subject: `${isReport ? EMAIL_SUBJECT.PAID_APP_REPORT : EMAIL_SUBJECT.PAID_APP_CONFIRM}`,
-        to: [
-          {
-            email: `${isReport ? EMAIL_ADDRESS.PARTNER : EMAIL_ADDRESS.PROF}`,
-            type: 'to',
-          },
-        ],
-        merge_language: 'handlebars',
-        global_merge_vars: template_content,
-      },
-    };
-    return message;
-  } else {
-    const message = {
-      key: MAILCHIMP_API_KEY,
-      template_name: `${isReport ? EMAIL_TEMPLATE.NEW_APP_REPORT : EMAIL_TEMPLATE.NEW_APP_CONFIRM}`,
-      template_content,
-      message: {
-        from_email: EMAIL_ADDRESS.NOREPLY,
-        subject: `${isReport ? EMAIL_SUBJECT.NEW_APP_REPORT : EMAIL_SUBJECT.NEW_APP_CONFIRM}`,
-        to: [
-          {
-            email: `${isReport ? EMAIL_ADDRESS.PARTNER : EMAIL_ADDRESS.PROF}`,
-            type: 'to',
-          },
-        ],
-        merge_language: 'handlebars',
-        global_merge_vars: template_content,
-      },
-    };
-    return message;
+    message.template_name = `${isReport ? EMAIL_TEMPLATE.PAID_APP_REPORT : EMAIL_TEMPLATE.PAID_APP_CONFIRM}`;
+    message.message.subject = `${isReport ? EMAIL_SUBJECT.PAID_APP_REPORT : EMAIL_SUBJECT.PAID_APP_CONFIRM}`;
   }
+  return message;
 };
 
 const postEmail = async (message_report: Message, message_confirm: Message) => {
+  let api_object = {
+    method: 'POST',
+    mode: 'cors',
+    cache: 'no-cache',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    redirect: 'follow',
+    referrerPolicy: 'no-referrer',
+    body: JSON.stringify(message_report),
+  };
   try {
-    const response_report = fetch(MAILCHIMP_API_URI, {
-      method: 'POST',
-      mode: 'cors',
-      cache: 'no-cache',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      redirect: 'follow',
-      referrerPolicy: 'no-referrer',
-      body: JSON.stringify(message_report),
-    });
-    const response_confirm = fetch(MAILCHIMP_API_URI, {
-      method: 'POST',
-      mode: 'cors',
-      cache: 'no-cache',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      redirect: 'follow',
-      referrerPolicy: 'no-referrer',
-      body: JSON.stringify(message_confirm),
-    });
-    const response_all = await Promise.all([response_report, response_confirm]);
-    return response_all;
+    const response_report = await fetch(MAILCHIMP_API_URI, api_object);
+    if (response_report) {
+      api_object.body = JSON.stringify(message_confirm);
+      const response_confirm = await fetch(MAILCHIMP_API_URI, api_object);
+      return response_confirm.json();
+    }
   } catch (error) {
     console.error(error);
   }
